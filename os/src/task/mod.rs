@@ -243,16 +243,23 @@ pub fn get_current_task_syscall_time() -> [u32; MAX_SYSCALL_NUM]{
 pub fn task_mmap(_start: usize, _len: usize, port: usize) -> isize{
     let mut inner = TASK_MANAGER.inner.exclusive_access();
     let current_task = inner.current_task;
-    let mut _port = MapPermission::empty();
-    if port & (1 << 0) == 1 {
+    let mut _port = MapPermission::U;
+    if port & (1 << 0) != 0 {
         _port |= MapPermission::R;
     }
-    if port & (1 << 1) == 1 {
+    if port & (1 << 1) != 0 {
         _port |= MapPermission::W;
     }
-    if port & (1 << 2) == 1 {
+    if port & (1 << 2) != 0 {
         _port |= MapPermission::X;
     }
-    _port |= MapPermission::U;
     inner.tasks[current_task].memory_set.mmap(_start, _len, _port)
+}
+
+///
+pub fn task_munmap(_start: usize, _len: usize) -> isize{
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current_task = inner.current_task;
+
+    inner.tasks[current_task].memory_set.unmmap(_start, _len)
 }

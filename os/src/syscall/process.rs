@@ -4,7 +4,7 @@ use crate::{
     config::{MAX_SYSCALL_NUM, PAGE_SIZE}, mm::translated_byte_buffer, task::{
         change_program_brk, current_user_token, exit_current_and_run_next, 
         get_current_task_start_time, get_current_task_syscall_time, 
-        suspend_current_and_run_next, task_mmap, TaskStatus}, timer::{get_time_ms, get_time_us},
+        suspend_current_and_run_next, task_mmap, task_munmap, TaskStatus}, timer::{get_time_ms, get_time_us},
 };
 
 #[repr(C)]
@@ -109,7 +109,10 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    if _start % PAGE_SIZE != 0 {
+        return -1;
+    }
+    task_munmap(_start, _len)
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
