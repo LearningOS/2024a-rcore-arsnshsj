@@ -262,6 +262,24 @@ impl MemorySet {
             false
         }
     }
+
+    ///
+    pub fn mmap(&mut self, start: usize, len: usize, port: MapPermission) -> isize {
+        let st_va = VirtAddr::from(start);
+        let ed_va = VirtAddr::from(start + len);
+        let st_va_vpn = st_va.floor();
+        let ed_va_vpn = ed_va.ceil();
+        for area in &self.areas {
+            if area.vpn_range.get_start() <= st_va_vpn && st_va_vpn < area.vpn_range.get_end() {
+                return -1;
+            }
+            if area.vpn_range.get_start() < ed_va_vpn && ed_va_vpn <= area.vpn_range.get_end() {
+                return -1;
+            }
+        }
+        self.insert_framed_area(st_va, ed_va, port);
+        0
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

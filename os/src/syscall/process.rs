@@ -103,8 +103,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     if _port & 0x7 == 0 {
         return -1;
     }
-    task_mmap(_start, _len, _port);
-    0
+    task_mmap(_start, _len, _port)
 }
 
 // YOUR JOB: Implement munmap.

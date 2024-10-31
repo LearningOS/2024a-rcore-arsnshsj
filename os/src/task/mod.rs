@@ -21,6 +21,7 @@ use crate::config::MAX_SYSCALL_NUM;
 use crate::sync::UPSafeCell;
 use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
+use crate::mm::MapPermission;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
@@ -238,6 +239,20 @@ pub fn get_current_task_syscall_time() -> [u32; MAX_SYSCALL_NUM]{
     inner.tasks[inner.current_task].task_syscall_time
 }
 
-pub fn task_mmap(_start: usize, _len: usize, _port: usize) {
-    
+///
+pub fn task_mmap(_start: usize, _len: usize, port: usize) -> isize{
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current_task = inner.current_task;
+    let mut _port = MapPermission::empty();
+    if port & (1 << 0) == 1 {
+        _port |= MapPermission::R;
+    }
+    if port & (1 << 1) == 1 {
+        _port |= MapPermission::W;
+    }
+    if port & (1 << 2) == 1 {
+        _port |= MapPermission::X;
+    }
+    _port |= MapPermission::U;
+    inner.tasks[current_task].memory_set.mmap(_start, _len, _port)
 }
