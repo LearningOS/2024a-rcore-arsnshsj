@@ -157,9 +157,8 @@ pub fn update_syscall_times(syscall_id: usize) {
 
 ///
 pub fn task_mmap(_start: usize, _len: usize, port: usize) -> isize{
-    let mut processor = PROCESSOR.exclusive_access();
-    let temp = processor.take_current().unwrap();
-    let mut inner = temp.inner_exclusive_access();
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
     let mut _port = MapPermission::U;
     if port & (1 << 0) != 0 {
         _port |= MapPermission::R;
@@ -175,8 +174,7 @@ pub fn task_mmap(_start: usize, _len: usize, port: usize) -> isize{
 
 ///
 pub fn task_munmap(_start: usize, _len: usize) -> isize{
-    let mut processor = PROCESSOR.exclusive_access();
-    let temp = processor.take_current().unwrap();
-    let mut inner = temp.inner_exclusive_access();
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
     inner.memory_set.unmmap(_start, _len)
 }
