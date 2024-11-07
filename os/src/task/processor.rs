@@ -9,6 +9,8 @@ use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use crate::config::MAX_SYSCALL_NUM;
+use crate::mm::MapPermission;
 use alloc::sync::Arc;
 use lazy_static::*;
 
@@ -43,6 +45,31 @@ impl Processor {
     ///Get current task in cloning semanteme
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(Arc::clone)
+    }
+
+    ///
+    pub fn get_current_task_syscall_time(&self) -> [u32;MAX_SYSCALL_NUM] {
+        let task = self.current().unwrap();
+        let inner = task.inner_exclusive_access();
+        inner.syscall_times
+    }
+    ///
+    pub fn get_current_task_start_time(&self) -> usize {
+        let task = self.current().unwrap();
+        let inner = task.inner_exclusive_access();
+        inner.start_time
+    }
+    ///
+    pub fn update_syscall_times(&mut self, syscall_id: usize) {
+        let task = self.current().unwrap();
+        let mut inner = task.inner_exclusive_access();
+        inner.syscall_times[syscall_id] += 1;
+    }
+    ///
+    pub fn get_current_task_status(&mut self) -> TaskStatus{
+        let task = self.current().unwrap();
+        let inner = task.inner_exclusive_access();
+        inner.task_status
     }
 }
 
@@ -108,4 +135,48 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+///get start time
+pub fn get_start_time() -> usize{
+    PROCESSOR.exclusive_access().get_current_task_start_time()
+}
+/// get syscall times
+pub fn get_syscall_time() -> [u32;MAX_SYSCALL_NUM]{ 
+    PROCESSOR.exclusive_access().get_current_task_syscall_time()
+}
+
+/// get status
+pub fn get_status() -> TaskStatus{ 
+    PROCESSOR.exclusive_access().get_current_task_status()
+}
+
+///
+pub fn update_syscall_times(syscall_id: usize) {
+    PROCESSOR.exclusive_access().update_syscall_times(syscall_id);
+}
+
+///
+pub fn task_mmap(_start: usize, _len: usize, port: usize) -> isize{
+    let mut processor = PROCESSOR.exclusive_access();
+    let temp = processor.take_current().unwrap();
+    let mut inner = temp.inner_exclusive_access();
+    let mut _port = MapPermission::U;
+    if port & (1 << 0) != 0 {
+        _port |= MapPermission::R;
+    }
+    if port & (1 << 1) != 0 {
+        _port |= MapPermission::W;
+    }
+    if port & (1 << 2) != 0 {
+        _port |= MapPermission::X;
+    }
+    inner.memory_set.mmap(_start, _len, _port)
+}
+
+///
+pub fn task_munmap(_start: usize, _len: usize) -> isize{
+    let mut processor = PROCESSOR.exclusive_access();
+    let temp = processor.take_current().unwrap();
+    let mut inner = temp.inner_exclusive_access();
+    inner.memory_set.unmmap(_start, _len)
 }
