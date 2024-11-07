@@ -1,14 +1,16 @@
 //! Process management syscalls
 use alloc::sync::Arc;
-
+use core::mem::size_of;
 use crate::{
-    config::MAX_SYSCALL_NUM,
+    config::{MAX_SYSCALL_NUM, PAGE_SIZE},
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str, translated_byte_buffer },
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
+        suspend_current_and_run_next, TaskStatus, get_start_time, get_syscall_time,
+        task_mmap,task_munmap, get_status, TaskControlBlock
     },
+    timer::{get_time_ms, get_time_us}
 };
 
 #[repr(C)]
@@ -122,7 +124,24 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let time = get_time_us();
+    let time = TimeVal {
+        sec: time / 1_000_000,
+        usec: time % 1_000_000,
+    };
+    let time_val_size = size_of::<TimeVal>();
+    let buffers = translated_byte_buffer
+        (current_user_token(), _ts as *const u8, time_val_size);
+    unsafe {
+        for buffer in buffers {
+            core::ptr::copy(
+            &time as *const TimeVal as *const u8,
+            buffer.as_mut_ptr(),
+            time_val_size,
+            );
+        }
+    }
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
@@ -133,7 +152,23 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let info = TaskInfo {
+        status : get_status(),
+        syscall_times : get_syscall_time(),
+        time : get_time_ms() - get_start_time(),
+    };
+    let len = size_of::<TaskInfo>();
+    let buffers = translated_byte_buffer
+        (current_user_token(), _ti as *const u8, len);
+    unsafe {
+        for buffer in buffers {
+            core::ptr::copy(
+            &info as *const TaskInfo as *const u8,
+            buffer.as_mut_ptr(),
+            len);
+        }
+    }
+    0
 }
 
 /// YOUR JOB: Implement mmap.
@@ -142,7 +177,16 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start % PAGE_SIZE != 0 {
+        return -1;
+    }
+    if _port & !0x7 != 0 {
+        return -1;
+    }
+    if _port & 0x7 == 0 {
+        return -1;
+    }
+    task_mmap(_start, _len, _port)
 }
 
 /// YOUR JOB: Implement munmap.
@@ -151,7 +195,10 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start % PAGE_SIZE != 0 {
+        return -1;
+    }
+    task_munmap(_start, _len)
 }
 
 /// change data segment size
@@ -171,7 +218,21 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+
+    let parent = current_task().unwrap();
+    let mut parent_inner = parent.inner_exclusive_access();
+
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let new_task = Arc::new(TaskControlBlock::new(data));
+        parent_inner.children.push(new_task.clone());
+        let new_pid = new_task.pid.0;
+        add_task(new_task);
+        new_pid as isize
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.
@@ -180,5 +241,11 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio < 2 {
+        return -1;
+    }
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner.priority = _prio as usize;
+    _prio
 }

@@ -300,6 +300,48 @@ impl MemorySet {
             false
         }
     }
+
+     ///
+     pub fn mmap(&mut self, start: usize, len: usize, port: MapPermission) -> isize {
+        let st_va = VirtAddr::from(start);
+        let ed_va = VirtAddr::from(start + len);
+        let st_va_vpn = st_va.floor().0;
+        let ed_va_vpn = ed_va.ceil().0;
+        for va in st_va_vpn..ed_va_vpn {
+            let vpn = VirtPageNum::from(va);
+            if let Some(pte) = self.page_table.translate(vpn) {
+                if pte.is_valid() {
+                    return -1;
+                }
+            }
+        }
+        self.insert_framed_area(st_va, ed_va, port);
+        0
+    }
+
+    ///
+    pub fn unmmap(&mut self, start: usize, len: usize) -> isize{
+        let st_va = VirtAddr::from(start);
+        let ed_va = VirtAddr::from(start + len);
+        if !st_va.aligned() {
+            return -1;
+        }
+        let st_va_vpn = st_va.floor().0;
+        let ed_va_vpn = ed_va.ceil().0;
+        let areas = &mut self.areas;
+        let page_table = &mut self.page_table;
+        for va in st_va_vpn..ed_va_vpn {
+            let vpn = VirtPageNum::from(va);
+            if let Some(area) = areas.iter_mut().find(
+                |temp| temp.vpn_range.get_start() == vpn){
+                    area.unmap_one(page_table, vpn);
+            }else {
+                return -1;
+            }
+        }
+        0
+    }
+
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
