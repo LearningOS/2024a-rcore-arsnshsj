@@ -9,7 +9,7 @@ use crate::{
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus, get_start_time, get_syscall_time,
-        task_mmap,task_munmap, get_status, TaskControlBlock
+        task_mmap,task_munmap, get_status
     },
     timer::{get_time_ms, get_time_us}
 };
@@ -220,16 +220,9 @@ pub fn sys_spawn(_path: *const u8) -> isize {
     );
     let token = current_user_token();
     let path = translated_str(token, _path);
-
-    let parent = current_task().unwrap();
-    let mut parent_inner = parent.inner_exclusive_access();
-
     if let Some(data) = open_file(path.as_str(), OpenFlags::RDONLY) {
-        let new_task = Arc::new(TaskControlBlock::new(&data.read_all()));
-        parent_inner.children.push(new_task.clone());
-        let new_pid = new_task.pid.0;
-        add_task(new_task);
-        new_pid as isize
+        let task = current_task().unwrap();
+        task.spwan(data.read_all().as_slice()) as isize
     } else {
         -1
     }
