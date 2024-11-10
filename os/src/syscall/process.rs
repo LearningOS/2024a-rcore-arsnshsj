@@ -1,13 +1,15 @@
 use crate::{
     config::MAX_SYSCALL_NUM,
     fs::{open_file, OpenFlags},
-    mm::{translated_ref, translated_refmut, translated_str},
+    mm::{translated_ref, translated_refmut, translated_str, translated_byte_buffer},
     task::{
         current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
         suspend_current_and_run_next, SignalFlags, TaskStatus,
     },
+    timer::get_time_us,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
+use::core::mem::size_of;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -167,7 +169,24 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()
     );
-    -1
+    let time = get_time_us();
+    let time = TimeVal {
+        sec: time / 1_000_000,
+        usec: time % 1_000_000,
+    };
+    let time_val_size = size_of::<TimeVal>();
+    let buffers = translated_byte_buffer
+        (current_user_token(), _ts as *const u8, time_val_size);
+    unsafe {
+        for buffer in buffers {
+            core::ptr::copy(
+            &time as *const TimeVal as *const u8,
+            buffer.as_mut_ptr(),
+            time_val_size,
+            );
+        }
+    }
+    0
 }
 
 /// task_info syscall
